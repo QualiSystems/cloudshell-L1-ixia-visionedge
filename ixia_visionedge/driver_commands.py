@@ -1,7 +1,14 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
+import re
+
+from backports.functools_lru_cache import lru_cache
 
 from cloudshell.layer_one.core.driver_commands_interface import DriverCommandsInterface
+from cloudshell.layer_one.core.response.resource_info.entities.chassis import Chassis
+from cloudshell.layer_one.core.response.resource_info.entities.blade import Blade
+from cloudshell.layer_one.core.response.resource_info.entities.port import Port
+from cloudshell.layer_one.core.response.response_info import ResourceDescriptionResponseInfo
 from cloudshell.layer_one.core.response.response_info import GetStateIdResponseInfo
 from ixia_visionedge.ixia_nto import NtoApiClient
 
@@ -11,6 +18,22 @@ class DriverCommands(DriverCommandsInterface):
     Driver commands implementation
     """
 
+    class API:
+        class KEY:
+            UUID = "uuid"
+            NAME = "name"
+            MODE = "mode"
+            ENABLED = "enabled"
+            SRC_PORT_UUID_LIST = "source_port_uuid_list"
+            DST_PORT_UUID_LIST = "dest_port_uuid_list"
+            SRC_FILTER_UUID_LIST = "source_filter_uuid_list"
+            DST_FILTER_UUID_LIST = "dest_filter_uuid_list"
+
+        class VALUE:
+            BIDI = "BIDIRECTIONAL"
+            NETWORK = "NETWORK"
+            PASS_ALL = "PASS_ALL"
+
     def __init__(self, logger, runtime_config):
         """
         :type logger: logging.Logger
@@ -18,7 +41,14 @@ class DriverCommands(DriverCommandsInterface):
         """
         self._logger = logger
         self._runtime_config = runtime_config
-        self.nto_session = None
+        self._login_details = None
+
+    @property
+    @lru_cache()
+    def _nto_session(self):
+        if self._login_details:
+            return NtoApiClient(*self._login_details)
+        raise Exception("Login details are not defined")
 
     def login(self, address, username, password):
         """
@@ -40,9 +70,9 @@ class DriverCommands(DriverCommandsInterface):
         """
         self._logger.warn('received request ')
 
-        port = 8000
-        self.nto_session = NtoApiClient(host=address, username=username,
-                                        password=password, port=port)
+        # self._nto_session.logout()
+        self._login_details = [address, username, password]
+        sys_info = self._nto_session.getSystem()
         self._logger.info('completed log in')
 
     def get_state_id(self):
@@ -92,29 +122,12 @@ class DriverCommands(DriverCommandsInterface):
                 session.send_command('map bidir {0} {1}'.format(convert_port(src_port), convert_port(dst_port)))
 
         """
-        nto = self.nto_session
-        src_port_name = src_port.split("/")[2]
-        dst_port_name = dst_port.split("/")[2]
-
-        # id1 = nto.getPortProperty(srcPortName, 'id')
-        # id2 = nto.getPortProperty(dstPortName, 'id')
-        src_port_id = nto.getCtePort(src_port_name)['uuid']
-        dst_port_id = nto.getCtePort(dst_port_name)['uuid']
-
-        # nto.modifyPort(str(id1), {'mode': 'BIDIRECTIONAL', 'enabled': True})
-        # nto.modifyPort(str(id2), {'mode': 'BIDIRECTIONAL', 'enabled': True})
-        nto.modifyCtePort(str(src_port_id), {'mode': 'BIDIRECTIONAL', 'enabled': True})
-        nto.modifyCtePort(str(dst_port_id), {'mode': 'BIDIRECTIONAL', 'enabled': True})
-
-        self._logger.warn('getting  port ids')
-        # result1 = nto.createFilter({'source_port_list': [id1], 'dest_port_list': [id2], 'mode': 'PASS_ALL'})
-        # result2 = nto.createFilter({'source_port_list': [id2], 'dest_port_list': [id1], 'mode': 'PASS_ALL'})
-        nto.createCteFilter(
-            {'source_port_uuid_list': [src_port_id], 'dest_port_uuid_list': [dst_port_id], 'mode': 'PASS_ALL'})
-        nto.createCteFilter(
-            {'source_port_uuid_list': [dst_port_id], 'dest_port_uuid_list': [src_port_id], 'mode': 'PASS_ALL'})
-        # self._logger.warn('results = ' + result1 + ' ' + result2)
-        pass
+        src_port_uuid = self._nto_session.getCtePort(self._from_cs_port(src_port)).get(self.API.KEY.UUID)
+        dst_port_uuid = self._nto_session.getCtePort(self._from_cs_port(dst_port)).get(self.API.KEY.UUID)
+        self._enable_port(src_port_uuid)
+        self._enable_port(dst_port_uuid)
+        self._create_filter(src_port_uuid, dst_port_uuid)
+        self._create_filter(dst_port_uuid, src_port_uuid)
 
     def map_uni(self, src_port, dst_ports):
         """
@@ -131,7 +144,44 @@ class DriverCommands(DriverCommandsInterface):
                 for dst_port in dst_ports:
                     session.send_command('map {0} also-to {1}'.format(convert_port(src_port), convert_port(dst_port)))
         """
-        raise NotImplementedError
+        src_port_uuid = self._nto_session.getCtePort(self._from_cs_port(src_port)).get(self.API.KEY.UUID)
+        self._enable_port(src_port_uuid)
+        for dst_port in dst_ports:
+            dst_port_uuid = self._nto_session.getCtePort(self._from_cs_port(dst_port)).get(self.API.KEY.UUID)
+            self._enable_port(dst_port_uuid)
+            self._create_filter(src_port_uuid, dst_port_uuid)
+
+    def _parse_port_name(self, port_name):
+        match = re.match(r'S(\d+)-P(\d+)', port_name, re.IGNORECASE)
+        if match:
+            blade_id = match.group(1)
+            port_id = match.group(2)
+            return blade_id, port_id
+
+    def _build_port_name(self, blade_id, port_id):
+        return "S{}-P{}".format(blade_id, str(port_id).zfill(2))
+
+    def _from_cs_port(self, cs_port):
+        return self._build_port_name(*cs_port.split("/")[1:])
+
+    def _enable_port(self, port_uuid):
+        self._nto_session.modifyCtePort(port_uuid, {self.API.KEY.MODE: self.API.VALUE.BIDI, self.API.KEY.ENABLED: True})
+
+    def _disable_port(self, port_uuid):
+        self._nto_session.modifyCtePort(port_uuid,
+                                        {self.API.KEY.MODE: self.API.VALUE.NETWORK, self.API.KEY.ENABLED: False})
+
+    def _disable_port_no_filters(self, port_uuid):
+        port_data = self._nto_session.getCtePort(port_uuid)
+        if not port_data.get(self.API.KEY.SRC_FILTER_UUID_LIST) and not port_data.get(
+                self.API.KEY.DST_FILTER_UUID_LIST):
+            self._disable_port(port_uuid)
+
+    def _create_filter(self, src_uuid, dst_uuid):
+        self._nto_session.createCteFilter(
+            {self.API.KEY.SRC_PORT_UUID_LIST: [src_uuid],
+             self.API.KEY.DST_PORT_UUID_LIST: [dst_uuid],
+             self.API.KEY.MODE: self.API.VALUE.PASS_ALL})
 
     def get_resource_description(self, address):
         """
@@ -166,36 +216,46 @@ class DriverCommands(DriverCommandsInterface):
 
             return ResourceDescriptionResponseInfo([chassis])
         """
-        from cloudshell.layer_one.core.response.resource_info.entities.chassis import Chassis
-        from cloudshell.layer_one.core.response.resource_info.entities.blade import Blade
-        from cloudshell.layer_one.core.response.resource_info.entities.port import Port
-        from cloudshell.layer_one.core.response.response_info import ResourceDescriptionResponseInfo
+        chassis_id = "1"
+        chassis_model_name = "Ixia Visionedge Chassis"
+        chassis = Chassis(chassis_id, address, chassis_model_name)
 
-        # chassis_resource_id = chassis_info.get_id()
-        # chassis_address = chassis_info.get_address()
-        chassis_model_name = "Visionedge Chassis"
-        # chassis_serial_number = chassis_info.get_serial_number()
-        chassis = Chassis("ChassisID", address, chassis_model_name, "C1")
+        blade_table = {}
 
-        # self._logger.warn('getting resources 2 ')
-        # blade_resource_id = blade_info.get_id()
-        blade_model_name = 'Generic L1 Module'
-        # blade_serial_number = blade_info.get_serial_number()
-        blade = Blade("Bladeid", blade_model_name, "S1")
-        blade.set_parent_resource(chassis)
-
-        nto = self.nto_session
-
-        # port_id = port_info.get_id()
-        ports = nto.getAllCtePorts()
-        for port_id in ports:
-            # port_id = "P1-01"
+        port_table = {}
+        port_list = self._nto_session.getAllCtePorts()
+        if not port_list:
+            raise Exception("Ports are not defined.")
+        for port_info in port_list:
+            port_uuid = port_info.get(self.API.KEY.UUID)
+            port_name = port_info.get(self.API.KEY.NAME)
+            blade_id, port_id = self._parse_port_name(port_name)
+            if blade_id and port_id:
+                blade = blade_table.get(blade_id)
+                if not blade:
+                    blade = Blade(blade_id)
+                    blade.set_parent_resource(chassis)
+                    blade_table[blade_id] = blade
+            else:
+                continue
             # port_serial_number = port_info.get_serial_number()
-            self._logger.warn('getting resources port' + port_id['name'])
-            port = Port(port_id['name'], 'Generic L1 Port', "P" + str(port_id['uuid']))
+            self._logger.warn('getting resources port' + port_name)
+            port = Port(port_id)
             port.set_parent_resource(blade)
+            port_table[port_uuid] = port
 
-        self._logger.warn('getting resources 3')
+        filters = self._nto_session.getAllCteFilters()
+        for f in filters:
+            f_inf = self._nto_session.getCteFilter(f.get(self.API.KEY.UUID))
+            src_list = f_inf.get(self.API.KEY.SRC_PORT_UUID_LIST)
+            dst_list = f_inf.get(self.API.KEY.DST_PORT_UUID_LIST)
+            src_id = src_list[0] if src_list else None
+            dst_id = dst_list[0] if dst_list else None
+            if src_id and dst_id:
+                src_port = port_table.get(src_id)
+                dst_port = port_table.get(dst_id)
+                dst_port.add_mapping(src_port)
+        # self._logger.warn('getting resources 3')
 
         return ResourceDescriptionResponseInfo([chassis])
 
@@ -237,31 +297,23 @@ class DriverCommands(DriverCommandsInterface):
                     _dst_port = convert_port(port)
                     session.send_command('map clear-to {0} {1}'.format(_src_port, _dst_port))
         """
-        nto = self.nto_session
-        src_port_name = src_port.split("/")[2]
-        dst_port_name = dst_ports[0].split("/")[2]
+        src_port_data = self._nto_session.getCtePort(self._from_cs_port(src_port))
+        src_port_uuid = src_port_data.get(self.API.KEY.UUID)
+        dst_port_uuids = [self._nto_session.getCtePort(self._from_cs_port(port)).get(self.API.KEY.UUID) for port in
+                          dst_ports]
 
-        # id1 = nto.getPortProperty(srcPortName, 'id')
-        # id2 = nto.getPortProperty(dstPortName, 'id')
-        src_port_id = nto.getCtePort(src_port_name)['uuid']
-        # dst_port_id = nto.getCtePort(dst_port_name)['uuid']
+        filter_uuid_list = src_port_data.get(self.API.KEY.DST_FILTER_UUID_LIST)
+        if not filter_uuid_list:
+            return
+        for filter_uuid in filter_uuid_list:
+            filter_data = self._nto_session.getCteFilter(filter_uuid)
+            filter_src_ports = filter_data.get(self.API.KEY.SRC_PORT_UUID_LIST)
+            filter_dst_ports = filter_data.get(self.API.KEY.DST_PORT_UUID_LIST)
+            if src_port_uuid in filter_src_ports and any(uuid in filter_dst_ports for uuid in dst_port_uuids):
+                self._nto_session.deleteCteFilter(filter_uuid)
 
-        # filter1 = nto.getPort(str(id1))['dest_filter_list']
-        # filter2 = nto.getPort(str(id2))['dest_filter_list']
-        src_port_filter = nto.getCtePort(str(src_port_id))['dest_filter_uuid_list']
-        # dst_port_filter = nto.getCtePort(str(dst_port_id))['dest_filter_uuid_list']
-
-        # nto.deleteFilter(str(filter1[0]))
-        # nto.deleteFilter(str(filter2[0]))
-        nto.deleteCteFilter(str(src_port_filter[0]))
-        # nto.deleteCteFilter(str(dst_port_filter[0]))
-
-        # nto.modifyPort(str(id1), {'mode': 'NETWORK', 'enabled': False})
-        # nto.modifyPort(str(id2), {'mode': 'NETWORK', 'enabled': False})
-        nto.modifyCtePort(str(src_port_id), {'mode': 'NETWORK', 'enabled': False})
-        # nto.modifyCtePort(str(dst_port_id), {'mode': 'NETWORK', 'enabled': False})
-
-        pass
+        for port_uuid in dst_port_uuids + [src_port_uuid]:
+            self._disable_port_no_filters(port_uuid)
 
     def get_attribute_value(self, cs_address, attribute_name):
         """
@@ -316,7 +368,7 @@ class DriverCommands(DriverCommandsInterface):
         Example:
             return self.map_uni(src_port, dst_ports)
         """
-        raise NotImplementedError
+        self.map_uni(src_port, dst_ports)
 
     def set_speed_manual(self, src_port, dst_port, speed, duplex):
         """
