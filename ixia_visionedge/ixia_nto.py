@@ -25,10 +25,19 @@ import time
 import os
 import sys
 
+
+class NtoException(Exception):
+    pass
+
+
+class NtoAuthException(NtoException):
+    pass
+
+
 class NtoApiClient(object):
 
     def __init__(self, host, username, password, port=8000, debug=False, logFile=None):
-        #urllib3.disable_warnings()
+        # urllib3.disable_warnings()
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         self.host = host
         self.port = port
@@ -42,27 +51,33 @@ class NtoApiClient(object):
         self.logFile = logFile
 
         self.auth_b64 = base64.b64encode(bytearray(username + ":" + password, 'ascii')).decode('ascii')
-        self.password_headers = { 'Authorization' : 'Basic ' + self.auth_b64, 'Content-type' : 'application/json' }
+        self.password_headers = {'Authorization': 'Basic ' + self.auth_b64, 'Content-type': 'application/json'}
 
-        #self.connection = urllib3.connectionpool.HTTPSConnectionPool(host, port=port, ssl_version='TLSv1_2')
-        self.connection = urllib3.connectionpool.HTTPSConnectionPool(host, port=port, cert_reqs='CERT_NONE', ca_certs=None, timeout=240, retries=2)
+        # self.connection = urllib3.connectionpool.HTTPSConnectionPool(host, port=port, ssl_version='TLSv1_2')
+        self.connection = urllib3.connectionpool.HTTPSConnectionPool(host, port=port, cert_reqs='CERT_NONE',
+                                                                     ca_certs=None, timeout=240, retries=2)
         response = self.connection.urlopen('GET', '/api/auth', headers=self.password_headers)
-    
+
         if debug:
-            self._log ("Status=%s"  % response.status)
-            self._log ("Reason=%s"  % response.reason)
-            self._log ("Headers=%s" % response.headers)
-            self._log ("Data=%s"    % response.data)
+            self._log("Status=%s" % response.status)
+            self._log("Reason=%s" % response.reason)
+            self._log("Headers=%s" % response.headers)
+            self._log("Data=%s" % response.data)
 
         self.token = response.headers['x-auth-token']
-        self.token_headers = { 'Authentication' : self.token, 'Content-type' : 'application/json' }
-
+        self.token_headers = {'Authentication': self.token, 'Content-type': 'application/json'}
 
     def __str__(self):
-        return ("NtoApiClient('host=%s', 'port=%s', 'user=%s', 'password=%s', 'auth=%s', 'debug=%s', 'password_hdrs=%s', 'token_hdrs=%s', 'connection=%s'") % (self.host, self.port,  self.user, self.password, self.auth_b64, self.debug, self.password_headers, self.token_headers, self.connection)
+        return (
+                   "NtoApiClient('host=%s', 'port=%s', 'user=%s', 'password=%s', 'auth=%s', 'debug=%s', 'password_hdrs=%s', 'token_hdrs=%s', 'connection=%s'") % (
+                   self.host, self.port, self.user, self.password, self.auth_b64, self.debug, self.password_headers,
+                   self.token_headers, self.connection)
 
     def __repr__(self):
-        return ("NtoApiClient('host=%s', 'port=%s', 'user=%s', 'password=%s', 'auth=%s', 'debug=%s', 'password_hdrs=%s', 'token_hdrs=%s', 'connection=%s'") % (self.host, self.port,  self.user, self.password, self.auth_b64, self.debug, self.password_headers, self.token_headers, self.connection)
+        return (
+                   "NtoApiClient('host=%s', 'port=%s', 'user=%s', 'password=%s', 'auth=%s', 'debug=%s', 'password_hdrs=%s', 'token_hdrs=%s', 'connection=%s'") % (
+                   self.host, self.port, self.user, self.password, self.auth_b64, self.debug, self.password_headers,
+                   self.token_headers, self.connection)
 
     def _log(self, message):
         handle = open(self.logFile, 'a') if self.logFile else sys.stdout
@@ -76,28 +91,40 @@ class NtoApiClient(object):
 
         response = None
         if self.debug:
-            self._log ("Sending a message to the server with parameters:\n")
-            self._log (" HTTPMethod=%s\n" % HTTPMethod)
-            self._log (" URL=%s\n"        % URL)
-            self._log (" argsAPI=%s\n"    % argsAPI)
+            self._log("Sending a message to the server with parameters:\n")
+            self._log(" HTTPMethod=%s\n" % HTTPMethod)
+            self._log(" URL=%s\n" % URL)
+            self._log(" argsAPI=%s\n" % argsAPI)
 
         argsAPI = json.dumps(argsAPI)
         response = self.connection.urlopen(HTTPMethod, URL, body=argsAPI, headers=self.token_headers)
 
         if self.debug:
-            self._log ("Response:\n")
-            self._log (" Status=%s\n"  % response.status)
-            self._log (" Reason=%s\n"  % response.reason)
-            self._log (" Headers=%s\n" % response.headers)
-            self._log (" Data=%s\n"    % response.data)
-            self._log (" decode=%s\n"  % decode)
+            self._log("Response:\n")
+            self._log(" Status=%s\n" % response.status)
+            self._log(" Reason=%s\n" % response.reason)
+            self._log(" Headers=%s\n" % response.headers)
+            self._log(" Data=%s\n" % response.data)
+            self._log(" decode=%s\n" % decode)
 
         data = response.data
         if decode:
             data = json.loads(data.decode('ascii'))
 
+        self._validate_response_data(data)
+
         return data
 
+    def _validate_response_data(self, data):
+        if isinstance(data, dict):
+            code = data.get("code")
+            if code:
+                descr = data.get("description", "Error occured")
+                if code in [400, 403, 404, 500, 501, 503, 504]:
+                    raise NtoException("Status code {}, {}".format(code, descr))
+                elif code == 401:
+                    raise NtoAuthException("Status code {}, {}".format(code, descr))
+        return data
 
     def setDebug(self, debug=False):
         """ Turn on/off debug messages """
@@ -116,12 +143,12 @@ class NtoApiClient(object):
         response = self.connection.urlopen('GET', '/api/auth', headers=self.password_headers)
 
         if self.debug:
-            self._log ("Status=%s"  % response.status)
-            self._log ("Reason=%s"  % response.reason)
-            self._log ("Headers=%s" % response.headers)
-            self._log ("Data=%s"    % response.data)
+            self._log("Status=%s" % response.status)
+            self._log("Reason=%s" % response.reason)
+            self._log("Headers=%s" % response.headers)
+            self._log("Data=%s" % response.data)
 
-        self.token_headers = { 'Authentication' : response.headers['x-auth-token'], 'Content-type' : 'application/json' }
+        self.token_headers = {'Authentication': response.headers['x-auth-token'], 'Content-type': 'application/json'}
 
     def addAggregationSwitch(self):
         """ addAggregationSwitch :
@@ -130,7 +157,7 @@ class NtoApiClient(object):
         Sample usage:
         """
         return self._callServer('POST', '/api/actions/add_aggregation_switch', None)
-            
+
     def certificateManagement(self, argsAPI):
         """ certificateManagement :
         Allows Syslog and TLS/HTTPS certificates to be uploaded and deleted. Basic
@@ -198,7 +225,7 @@ class NtoApiClient(object):
         """
         argsAPI = {}
         return self._callServer('POST', '/api/actions/clear_config', argsAPI)
-    
+
     def clearFiltersAndPorts(self):
         """ clearFiltersAndPorts :
         This command deletes all filters and port groups and sets all ports to
@@ -210,7 +237,7 @@ class NtoApiClient(object):
         """
         argsAPI = {}
         return self._callServer('POST', '/api/actions/clear_filters_and_ports', argsAPI)
-    
+
     def clearSystem(self):
         """ clearSystem :
         This command clears the system and restores it to a default state, including
@@ -343,7 +370,7 @@ class NtoApiClient(object):
         """
         argsAPI = {}
         return self._callServer('POST', '/api/actions/get_memory_meters', argsAPI)
-        
+
     def getTranceiverInfo(self):
         """ getTranceiverInfo :
         Return the tranceivor information.
@@ -354,7 +381,7 @@ class NtoApiClient(object):
         """
         argsAPI = {}
         return self._callServer('POST', '/api/actions/get_tranceiver_info', argsAPI)
-    
+
     def getObjectType(self, argsAPI):
         """ getObjectType :
         Return the object type for an internal id.
@@ -413,7 +440,8 @@ class NtoApiClient(object):
 
         # Set creative contents part.
         buffer.extend(b'--' + bytearray(boundary, 'ascii') + b'\r\n')
-        buffer.extend(b'Content-Disposition: form-data; name="file"; filename=' + bytearray(file_name, 'ascii') + b'\r\n')
+        buffer.extend(
+            b'Content-Disposition: form-data; name="file"; filename=' + bytearray(file_name, 'ascii') + b'\r\n')
         buffer.extend(b'Content-Type: application/octet-stream\r\n')
         buffer.extend(b'\r\n')
         # TODO: catch errors with opening file.
@@ -423,11 +451,11 @@ class NtoApiClient(object):
         buffer.extend(b'--' + bytearray(boundary, 'ascii') + b'--\r\n')
         buffer.extend(b'\r\n')
 
-        hdrs =  { 'Authentication' : self.token, 'Content-type' : 'multipart/form-data; boundary=' + boundary }
+        hdrs = {'Authentication': self.token, 'Content-type': 'multipart/form-data; boundary=' + boundary}
         response = self.connection.urlopen('POST', '/api/actions/import', body=buffer, headers=hdrs)
-        #self._log (response.status, response.reason)
+        # self._log (response.status, response.reason)
         data = response.data
-        
+
         return data
 
     def installLicense(self, argsAPI):
@@ -438,7 +466,7 @@ class NtoApiClient(object):
         >>> nto.installLicense({'file_name': '/Users/fmota/Desktop/IxiaLicenseA_17_Fred_20150826_1.txt'})
         '{"message": "License installed from /Users/fmota/Desktop/IxiaLicenseA_17_Fred_20150826_1.txt."}'
         """
-            
+
         file_name = ''
         if 'file_name' in argsAPI:
             file_name = argsAPI['file_name']
@@ -454,13 +482,14 @@ class NtoApiClient(object):
             buffer.extend(b'Content-Disposition: form-data; name="param"\r\n')
             buffer.extend(b'Content-Type: application/json\r\n')
             buffer.extend(b'\r\n')
-            #buffer.extend(json.dumps({'action_target' : target}))
+            # buffer.extend(json.dumps({'action_target' : target}))
             buffer.extend(json.dumps(argsAPI))
             buffer.extend(b'\r\n')
 
         # Set creative contents part.
         buffer.extend(b'--' + bytearray(boundary, 'ascii') + b'\r\n')
-        buffer.extend(b'Content-Disposition: form-data; name="file"; filename=' + bytearray(file_name, 'ascii') + b'\r\n')
+        buffer.extend(
+            b'Content-Disposition: form-data; name="file"; filename=' + bytearray(file_name, 'ascii') + b'\r\n')
         buffer.extend(b'Content-Type: application/octet-stream\r\n')
         buffer.extend(b'\r\n')
         # TODO: catch errors with opening file.
@@ -470,9 +499,9 @@ class NtoApiClient(object):
         buffer.extend(b'--' + bytearray(boundary, 'ascii') + b'--\r\n')
         buffer.extend(b'\r\n')
 
-        hdrs =  { 'Authentication' : self.token, 'Content-type' : 'multipart/form-data; boundary=' + boundary }
+        hdrs = {'Authentication': self.token, 'Content-type': 'multipart/form-data; boundary=' + boundary}
         response = self.connection.urlopen('POST', '/api/actions/install_license', body=buffer, headers=hdrs)
-        #self._log (response.status, response.reason)
+        # self._log (response.status, response.reason)
         data = response.data
 
         return data
@@ -492,16 +521,16 @@ class NtoApiClient(object):
             del argsAPI['file_name']
 
         boundary = "-----WebKitFormBoundary" + str(int(time.time())) + str(os.getpid())
-        
+
         parts = []
-        
+
         # Set param
         if len(argsAPI.keys()) > 0:
             parts.append('--' + boundary)
             parts.append('Content-Disposition: form-data; name="param"')
             parts.append('Content-Type: application/json')
             parts.append('')
-            #parts.append(json.dumps({'action_target' : target}))
+            # parts.append(json.dumps({'action_target' : target}))
             parts.append(json.dumps(argsAPI))
 
         # Set creative contents part.
@@ -511,17 +540,17 @@ class NtoApiClient(object):
         parts.append('')
         # TODO: catch errors with opening file.
         parts.append(open(file_name, 'r').read())
-        
+
         parts.append('--' + boundary + '--')
         parts.append('')
-        
+
         content = '\r\n'.join(parts)
-        
-        hdrs =  { 'Authentication' : self.token, 'Content-type' : 'multipart/form-data; boundary=' + boundary }
+
+        hdrs = {'Authentication': self.token, 'Content-type': 'multipart/form-data; boundary=' + boundary}
         response = self.connection.urlopen('POST', '/api/actions/install_license', body=content, headers=hdrs)
-        #self._log (response.status, response.reason)
+        # self._log (response.status, response.reason)
         data = response.data
-        
+
         return data
 
     def installSoftware(self, argsAPI):
@@ -545,7 +574,8 @@ class NtoApiClient(object):
 
         # Set creative contents part.
         buffer.extend(b'--' + bytearray(boundary, 'ascii') + b'\r\n')
-        buffer.extend(b'Content-Disposition: form-data; name="file"; filename=' + bytearray(file_name, 'ascii') + b'\r\n')
+        buffer.extend(
+            b'Content-Disposition: form-data; name="file"; filename=' + bytearray(file_name, 'ascii') + b'\r\n')
         buffer.extend(b'Content-Type: application/octet-stream\r\n')
         buffer.extend(b'\r\n')
         # TODO: catch errors with opening file.
@@ -555,13 +585,13 @@ class NtoApiClient(object):
         buffer.extend(b'--' + bytearray(boundary, 'ascii') + b'--\r\n')
         buffer.extend(b'\r\n')
 
-        hdrs =  { 'Authentication' : self.token, 'Content-type' : 'multipart/form-data; boundary=' + boundary }
+        hdrs = {'Authentication': self.token, 'Content-type': 'multipart/form-data; boundary=' + boundary}
         response = self.connection.urlopen('POST', '/api/actions/install_software', body=buffer, headers=hdrs)
-        #self._log (response.status, response.reason)
+        # self._log (response.status, response.reason)
         data = response.data
 
         return data
-                                                                                        
+
     def powerDown(self, argsAPI={}):
         """ powerDown :
         This command safely shuts down an NTO, a union or a member.
@@ -581,7 +611,7 @@ class NtoApiClient(object):
         *** TO BE TESTED ***
         >>> nto.pullConfigFromHaPeer()
         """
-        argsAPI={}
+        argsAPI = {}
         return self._callServer('POST', '/api/actions/pull_config_from_ha_peer', argsAPI)
 
     def pushConfigToHaPeer(self):
@@ -592,7 +622,7 @@ class NtoApiClient(object):
         *** TO BE TESTED ***
         >>> nto.pushConfigToHaPeer()
         """
-        argsAPI={}
+        argsAPI = {}
         return self._callServer('POST', '/api/actions/push_config_to_ha_peer', argsAPI)
 
     def removeLicense(self):
@@ -602,7 +632,7 @@ class NtoApiClient(object):
         Sample usage:
         >>> nto.removeLicense()
         """
-        argsAPI={}
+        argsAPI = {}
         return self._callServer('POST', '/api/actions/remove_license', argsAPI)
 
     def removeLineCard(self, argsAPI):
@@ -614,7 +644,7 @@ class NtoApiClient(object):
         {u'message': u'System restart requested.'}
         """
         return self._callServer('POST', '/api/actions/remove_line_card', argsAPI)
-    
+
     def restart(self, argsAPI={}):
         """ restart :
         This command safely restarts an NTO, a union, or a member.
@@ -633,9 +663,9 @@ class NtoApiClient(object):
         >>> nto.revertSoftware()
         {u'message': u'Software revert requested. The system will be restarted. Visit the 7300 launch page in your browser to obtain the reverted client software.'}
         """
-        argsAPI={}
+        argsAPI = {}
         return self._callServer('POST', '/api/actions/revert_software', argsAPI)
-        
+
     def saveLogs(self, argsAPI):
         """ saveLogs :
         Save the current system log files for subsequent delivery to Anue Support.
@@ -647,7 +677,7 @@ class NtoApiClient(object):
         file_name = ''
         if 'file_name' in argsAPI:
             file_name = argsAPI['file_name']
-        
+
         file = self._callServer('POST', '/api/actions/save_logs', argsAPI, False)
         f = open(file_name, 'wb')
         f.write(file)
@@ -661,7 +691,7 @@ class NtoApiClient(object):
         *** TO BE TESTED ***
         >>> nto.setHaSyncPort()
         """
-        argsAPI={}
+        argsAPI = {}
         return self._callServer('POST', '/api/actions/set_ha_sync_port', argsAPI)
 
     def setIpConfig(self, argsAPI):
@@ -689,7 +719,7 @@ class NtoApiClient(object):
         Sample usage:
         """
         return self._callServer('POST', '/api/actions/update_fabric_ports', argsAPI)
-        
+
     ###################################################
     # Capture Resources
     ###################################################
@@ -702,7 +732,7 @@ class NtoApiClient(object):
         [{u'id': 546, u'name': u'L4-CAP'}]
         """
         return self._callServer('GET', '/api/capture_resources')
-    
+
     def getCapture(self, resource):
         """ getCapture :
         Fetch the properties of a capture object.
@@ -741,7 +771,7 @@ class NtoApiClient(object):
         Sample usage:
         >>> nto.downloadFileCapture('L1-CAP', {'file_name': 'Suspicious Netflow export.pcap'})
         """
-            
+
         file_name = ''
         if 'file_name' in argsAPI:
             file_name = argsAPI['file_name']
@@ -868,7 +898,7 @@ class NtoApiClient(object):
         [{u'id': 179, u'name': u'L2-ATIP'}]
         """
         return self._callServer('GET', '/api/atip_resources')
-        
+
     def getAtip(self, resource):
         """ getCapture :
         Fetch the properties of an ATIP resource.
@@ -919,7 +949,6 @@ class NtoApiClient(object):
         ''
         """
         return self._callServer('PUT', '/api/atip_resources/' + resource, argsAPI, False)
-
 
     ###################################################
     # Authentication
@@ -994,7 +1023,6 @@ class NtoApiClient(object):
         """
         return self._callServer('POST', '/api/cte_cluster', argsAPI)
 
-
     # CTE Connections
 
     def createCteConnection(self, argsAPI):
@@ -1044,7 +1072,6 @@ class NtoApiClient(object):
         Sample usage:
         """
         return self._callServer('PUT', '/api/cte_connections/' + cte_id, argsAPI, False)
-
 
     # CTE Filters
 
@@ -1096,7 +1123,6 @@ class NtoApiClient(object):
         """
         return self._callServer('PUT', '/api/cte_filters/' + cte_filter_id, argsAPI, False)
 
-
     # CTE Members
 
     def getCteMember(self, cte_member_id):
@@ -1122,7 +1148,6 @@ class NtoApiClient(object):
         Sample usage:
         """
         return self._callServer('POST', '/api/cte_members/search', argsAPI)
-
 
     # CTE Operations
 
@@ -1204,7 +1229,6 @@ class NtoApiClient(object):
         """
         return self._callServer('POST', '/api/cte_operations/leave_topology', argsAPI)
 
-
     # CTE Port Groups
 
     def getCtePortGroup(self, cte_port_group_id):
@@ -1230,7 +1254,6 @@ class NtoApiClient(object):
         Sample usage:
         """
         return self._callServer('POST', '/api/cte_port_groups/search', argsAPI)
-
 
     # CTE Ports
 
@@ -1265,7 +1288,7 @@ class NtoApiClient(object):
         Sample usage:
         """
         return self._callServer('PUT', '/api/cte_ports/' + cte_port_id, argsAPI, False)
-        
+
     ####################################
     # CTE Remote Systems (deprecated)
     ####################################
@@ -1301,7 +1324,7 @@ class NtoApiClient(object):
         Sample usage:
         """
         argsAPI = {}
-        return self._callServer('DELETE', '/api/cte_remote_system/' + cte_id , argsAPI, False)
+        return self._callServer('DELETE', '/api/cte_remote_system/' + cte_id, argsAPI, False)
 
     def searchCte(self, argsAPI):
         """ searchCte :
@@ -1318,7 +1341,6 @@ class NtoApiClient(object):
         Sample usage:
         """
         return self._callServer('PUT', '/api/cte_remote_system/' + cte_id, argsAPI, False)
-    
 
     ####################################
     # Custom Icons
@@ -1385,7 +1407,8 @@ class NtoApiClient(object):
 
         # Set creative contents part.
         buffer.extend(b'--' + bytearray(boundary, 'ascii') + b'\r\n')
-        buffer.extend(b'Content-Disposition: form-data; name="file"; filename=' + bytearray(file_name, 'ascii') + b'\r\n')
+        buffer.extend(
+            b'Content-Disposition: form-data; name="file"; filename=' + bytearray(file_name, 'ascii') + b'\r\n')
         buffer.extend(b'Content-Type: application/octet-stream\r\n')
         buffer.extend(b'\r\n')
         # TODO: catch errors with opening file.
@@ -1394,9 +1417,9 @@ class NtoApiClient(object):
 
         buffer.extend(b'--' + bytearray(boundary, 'ascii') + b'--\r\n')
 
-        hdrs =  { 'Authentication' : self.token, 'Content-type' : 'multipart/form-data; boundary=' + boundary }
+        hdrs = {'Authentication': self.token, 'Content-type': 'multipart/form-data; boundary=' + boundary}
         response = self.connection.urlopen('POST', '/api/custom_icons', body=buffer, headers=hdrs)
-        #self._log (response.status, response.reason)
+        # self._log (response.status, response.reason)
         data = response.data
         data = json.loads(data.decode('ascii'))
 
@@ -1445,7 +1468,7 @@ class NtoApiClient(object):
         [{u'id': 467, u'name': u'NET_TROUBLESHOOTING'}, {u'id': 57, u'name': u'Public'}]
         """
         return self._callServer('GET', '/api/filter_template_collections')
-    
+
     def getFilterTemplateCollection(self, filter_template_collection):
         """ getFilterTemplateCollection :
         Fetch the properties of a filter template collection object which is specified by its
@@ -1456,7 +1479,7 @@ class NtoApiClient(object):
         {u'description': None, u'created': {u'type': u'CREATE', u'caused_by': u'admin', u'details': None, u'time': 1429303086082}, u'name': u'NET_TROUBLESHOOTING', u'mod_count': 2, u'id': 467, u'history': []}
         """
         return self._callServer('GET', '/api/filter_template_collections/' + filter_template_collection)
-    
+
     def createFilterTemplateCollection(self, argsAPI):
         """ createFilterTemplateCollection :
         Create a new filter template collection.
@@ -1466,7 +1489,7 @@ class NtoApiClient(object):
         {u'id': u'50'}
         """
         return self._callServer('POST', '/api/filter_template_collections', argsAPI)
-    
+
     def modifyFilterTemplateCollection(self, filter_template_collection_id, argsAPI):
         """ modifyFilterTemplateCollection :
         Update properties of a filter template collection.
@@ -1475,8 +1498,9 @@ class NtoApiClient(object):
         >>> nto.modifyFilterTemplateCollection('50', {'description': 'My private filter collection'})
         ''
         """
-        return self._callServer('PUT', '/api/filter_template_collections/' + filter_template_collection_id, argsAPI, False)
-    
+        return self._callServer('PUT', '/api/filter_template_collections/' + filter_template_collection_id, argsAPI,
+                                False)
+
     def searchFilterTemplateCollections(self, argsAPI):
         """ searchFilterTemplateCollections :
         Search for a specific filter template collection in the system by certain properties.
@@ -1486,7 +1510,7 @@ class NtoApiClient(object):
         [{u'id': 50, u'name': u'Private Filter Collection'}]
         """
         return self._callServer('POST', '/api/filter_template_collections/search', argsAPI)
-    
+
     def deleteFilterTemplateCollection(self, filter_template_collection_id):
         """ deleteFilterTemplate :
         Remove a filter template collection from the system. The filter is specified by a
@@ -1496,7 +1520,8 @@ class NtoApiClient(object):
         >>> nto.deleteFilterTemplateCollection('50')
         ''
         """
-        return self._callServer('DELETE', '/api/filter_template_collections/' + filter_template_collection_id, None, False)
+        return self._callServer('DELETE', '/api/filter_template_collections/' + filter_template_collection_id, None,
+                                False)
 
     ####################################
     # Filter Templates
@@ -1510,7 +1535,7 @@ class NtoApiClient(object):
         [{u'id': 468, u'name': u'Too Much Overhead'}, {u'id': 469, u'name': u'Syn Attack'}, {u'id': 470, u'name': u'ARP Storm'}, {u'id': 51, u'name': u'VLAN Gold'}]
         """
         return self._callServer('GET', '/api/filter_templates')
-    
+
     def getFilterTemplate(self, filter_template):
         """ getFilterTemplate :
         Fetch the properties of a filter templates object which is specified by its filter_template_id.
@@ -1520,7 +1545,7 @@ class NtoApiClient(object):
         {u'description': u'Use for base line tools.  Checks ICMP and SNMP traffic.', u'created': {u'type': u'CREATE', u'caused_by': u'admin', u'details': None, u'time': 1429303123112}, u'collection': u'NET_TROUBLESHOOTING', u'name': u'Too Much Overhead', u'mod_count': 5, u'criteria': {u'logical_operation': u'AND', u'ip_protocol': {u'value': u'1'}, u'layer4_src_or_dst_port': {u'port': u'161-162'}}, u'id': 468, u'history': []}
         """
         return self._callServer('GET', '/api/filter_templates/' + filter_template)
-    
+
     def createFilterTemplate(self, argsAPI):
         """ createFilterTemplate :
         Create a new filter template.
@@ -1530,7 +1555,7 @@ class NtoApiClient(object):
         {u'id': u'52'}
         """
         return self._callServer('POST', '/api/filter_templates', argsAPI)
-    
+
     def modifyFilterTemplate(self, filter_template_id, argsAPI):
         """ modifyFilterTemplate :
         Update properties of a filter template.
@@ -1540,7 +1565,7 @@ class NtoApiClient(object):
         ''
         """
         return self._callServer('PUT', '/api/filter_templates/' + filter_template_id, argsAPI, False)
-    
+
     def searchFilterTemplates(self, argsAPI):
         """ searchFilterTemplates :
         Search for a specific filter template in the system by certain properties.
@@ -1550,7 +1575,7 @@ class NtoApiClient(object):
         [{u'id': 51, u'name': u'VLAN Gold'}, {u'id': 52, u'name': u'Virtual Traffic'}]
         """
         return self._callServer('POST', '/api/filter_templates/search', argsAPI)
-    
+
     def deleteFilterTemplate(self, filter_template_id):
         """ deleteFilterTemplate :
         Remove a filter template from the system. The filter template is specified by a filter_template_id.
@@ -1573,7 +1598,7 @@ class NtoApiClient(object):
         [{u'id': 460, u'name': u'TCP, UDP, HTTP'}, {u'id': 461, u'name': u'Voice VLANs'}, {u'id': 462, u'name': u'ARP Storm'}, {u'id': 463, u'name': u'Syn Attack'}, {u'id': 464, u'name': u'DENY HTTPS'}, {u'id': 465, u'name': u'Too Much Overhead'}, {u'id': 466, u'name': u'F4'}]
         """
         return self._callServer('GET', '/api/filters')
-    
+
     def getFilter(self, filter):
         """ getFilter :
         Fetch the properties of a filter object which is specified by its filter_id_or_name.
@@ -1583,7 +1608,7 @@ class NtoApiClient(object):
         {u'dynamic_filter_type': u'TWO_STAGE', u'connect_in_access_settings': {u'policy': u'INHERITED'}, u'dest_port_list': [], u'match_count_unit': u'PACKETS', u'description': None, u'resource_access_settings': {u'policy': u'INHERITED'}, u'created': None, u'modify_access_settings': {u'policy': u'INHERITED'}, u'default_name': u'F3', u'dest_port_group_list': [], u'name': u'Voice VLANs', u'mod_count': 6, u'snmp_tag': None, u'mode': u'PASS_BY_CRITERIA', u'criteria': {u'vlan': {u'priority': None, u'vlan_id': u'1000'}, u'logical_operation': u'AND'}, u'keywords': [], u'source_port_group_list': [], u'source_port_list': [410, 428], u'connect_out_access_settings': {u'policy': u'INHERITED'}, u'id': 461, u'history': [{u'type': u'MODIFY', u'time': 1442251734144, u'caused_by': u'internal', u'details': None, u'props': [u'SOURCE_PORT_LIST', u'DEST_PORT_LIST']}]}
         """
         return self._callServer('GET', '/api/filters/' + filter)
-    
+
     def createFilter(self, argsAPI, allowTemporayDataLoss=False):
         """ createFilter :
         Create a new filter.
@@ -1593,7 +1618,7 @@ class NtoApiClient(object):
         {u'id': u'466'}
         """
         return self._callServer('POST', '/api/filters?allowTemporayDataLoss=' + str(allowTemporayDataLoss), argsAPI)
-    
+
     def modifyFilter(self, filter_id, argsAPI, allowTemporayDataLoss=False):
         """ modifyFilter :
         Update properties of a filter.
@@ -1602,8 +1627,10 @@ class NtoApiClient(object):
         >>> nto.modifyFilter('F4', {'mode' : 'PASS_BY_CRITERIA', 'criteria' : {'logical_operation': 'AND', 'ipv4_session_flow': {'session_sets': [{'a_sessions': ['10.0.0.0/24:1', '12.0.0.0/24:1'], 'b_sessions': ['14.0.0.0/24:1', '16.0.0.0/24:1']}], 'flow_type': 'UNI'}}})
         ''
         """
-        return self._callServer('PUT', '/api/filters/' + filter_id + '?allowTemporayDataLoss=' + str(allowTemporayDataLoss), argsAPI, False)
-    
+        return self._callServer('PUT',
+                                '/api/filters/' + filter_id + '?allowTemporayDataLoss=' + str(allowTemporayDataLoss),
+                                argsAPI, False)
+
     def searchFilters(self, argsAPI):
         """ searchFilters :
         Search for a specific port group in the system by certain properties.
@@ -1613,7 +1640,7 @@ class NtoApiClient(object):
         [{u'id': 463, u'name': u'Syn Attack'}, {u'id': 465, u'name': u'Too Much Overhead'}, {u'id': 466, u'name': u'F8'}, {u'id': 55, u'name': u'F4'}, {u'id': 460, u'name': u'TCP, UDP, HTTP'}, {u'id': 462, u'name': u'ARP Storm'}, {u'id': 461, u'name': u'Voice VLANs'}]
         """
         return self._callServer('POST', '/api/filters/search', argsAPI)
-    
+
     def deleteFilter(self, filter_id):
         """ deleteFilter :
         Remove a filter from the system. The filter is specified by a filter_id_or_name.
@@ -1647,7 +1674,7 @@ class NtoApiClient(object):
         [{u'id': 369, u'name': u'Security Mgmt'}, {u'id': 367, u'name': u'Network Mgmt'}, {u'id': 368, u'name': u'Security Engineering'}, {u'id': 365, u'name': u'group2'}, {u'id': 366, u'name': u'Network Operations'}, {u'id': 364, u'name': u'group1'}]
         """
         return self._callServer('GET', '/api/groups')
-    
+
     def getGroup(self, group):
         """ getGroup :
         Fetch the properties of an user group object which is specified by its
@@ -1658,7 +1685,7 @@ class NtoApiClient(object):
         {u'owners': [], u'auto_created': False, u'description': None, u'name': u'Security Mgmt', u'created': {u'type': u'CREATE', u'caused_by': u'admin', u'details': None, u'time': 1256831414761}, u'accessible_ports': [], u'mod_count': 2, u'members': [u'bbrother', u'securityguy'], u'accessible_filters': [], u'id': 369, u'history': [{u'type': u'MODIFY', u'time': 1316645263611, u'caused_by': u'internal', u'details': None, u'props': [u'ACCESSIBLE_PORTS']}]}
         """
         return self._callServer('GET', '/api/groups/' + group)
-    
+
     def createGroup(self, argsAPI):
         """ createGroup :
         Create a new user group.
@@ -1668,7 +1695,7 @@ class NtoApiClient(object):
         {u'id': u'477'}
         """
         return self._callServer('POST', '/api/groups', argsAPI)
-    
+
     def modifyGroup(self, group_id, argsAPI):
         """ modifyGroup :
         Update the properties of an existing user group.
@@ -1678,7 +1705,7 @@ class NtoApiClient(object):
         ''
         """
         return self._callServer('PUT', '/api/groups/' + group_id, argsAPI, False)
-    
+
     def deleteGroup(self, group_id):
         """ deleteGroup :
         Remove a user from the system. The user is specified by a group_id_or_name.
@@ -1688,7 +1715,7 @@ class NtoApiClient(object):
         ''
         """
         return self._callServer('DELETE', '/api/groups/' + group_id, None, False)
-    
+
     def searchGroups(self, argsAPI):
         """ searchGroups :
         Search for a specific user group in the system by certain properties.
@@ -1813,7 +1840,7 @@ class NtoApiClient(object):
         [{u'id': 471, u'name': u'LC6'}, {u'id': 476, u'name': u'LC1'}, {u'id': 474, u'name': u'LC5'}, {u'id': 475, u'name': u'LC3'}, {u'id': 472, u'name': u'LC2'}, {u'id': 473, u'name': u'LC4'}]
         """
         return self._callServer('GET', '/api/line_boards')
-    
+
     def getLineBoard(self, line_board):
         """ getLineBoard :
         Fetch the properties of a line board.
@@ -1823,7 +1850,7 @@ class NtoApiClient(object):
         {u'name': u'LC6', u'qsfp_card_mode': u'MODE_QSFP', u'default_name': u'LC6', u'mod_count': 9, u'modify_access_settings': {u'policy': u'ALLOW_ALL', u'groups': []}, u'id': 471}
         """
         return self._callServer('GET', '/api/line_boards/' + line_board)
-    
+
     def searchLineBoard(self, argsAPI):
         """ searchLineBoard :
         Search for a specific capture in the system by certain properties.
@@ -1833,7 +1860,7 @@ class NtoApiClient(object):
         [{u'id': 471, u'name': u'LC6'}]
         """
         return self._callServer('POST', '/api/line_boards/search', argsAPI)
-    
+
     def switchModeLineBoard(self, line_board):
         """ switchModeLineBoard :
         Switches the card mode to QSFP if in SFP mode and to SFP if in QSFP mode.
@@ -1844,7 +1871,7 @@ class NtoApiClient(object):
         """
         argsAPI = {}
         return self._callServer('PUT', '/api/line_boards/' + line_board + '/switch_mode', argsAPI, False)
-    
+
     def modifyLineBoard(self, line_board, argsAPI):
         """ modifyLineBoard :
         Update the properties of an existing line board.
@@ -1867,7 +1894,7 @@ class NtoApiClient(object):
         [{u'id': 572, u'name': u'Low Traffic'}]
         """
         return self._callServer('GET', '/api/monitors')
-    
+
     def getMonitor(self, monitor):
         """ getMonitor :
         Fetch the properties of a monitor object which is specified by its
@@ -1878,7 +1905,7 @@ class NtoApiClient(object):
         {u'description': None, u'created': {u'type': u'CREATE', u'caused_by': u'admin', u'details': None, u'time': 1442432114344}, u'actions': [{u'min_interval': {u'value': 15, u'unit': u'SEC'}, u'type': u'TRAP', u'enabled': True}], u'name': u'Low Traffic', u'mod_count': 0, u'trigger': {u'stat': u'NP_CURRENT_RX_UTILIZATION', u'window_size': 1, u'window_count': 1, u'down_threshold_enabled': True, u'up_threshold': 99, u'up_threshold_enabled': False, u'down_threshold': 10, u'type': u'PERCENT_STAT', u'ports': [58]}, u'id': 572, u'history': []}
         """
         return self._callServer('GET', '/api/monitors/' + monitor)
-    
+
     def createMonitor(self, argsAPI):
         """ createMonitor :
         Create a new monitor.
@@ -1888,7 +1915,7 @@ class NtoApiClient(object):
         '{"id": "574"}'
         """
         return self._callServer('POST', '/api/monitors', argsAPI, False)
-    
+
     def modifyMonitor(self, monitor_id, argsAPI):
         """ modifyMonitor :
         Update properties of a monitor.
@@ -1898,7 +1925,7 @@ class NtoApiClient(object):
         ''
         """
         return self._callServer('PUT', '/api/monitors/' + monitor_id, argsAPI, False)
-    
+
     def searchMonitors(self, argsAPI):
         """ searchMonitors :
         Search for a specific port group in the system by certain properties.
@@ -1908,7 +1935,7 @@ class NtoApiClient(object):
         [{u'id': 574, u'name': u'Drop Packets'}]
         """
         return self._callServer('POST', '/api/monitors/search', argsAPI)
-    
+
     def deleteMonitor(self, monitor_id):
         """ deleteMonitor :
         Remove a monitor from the system. The monitor is specified by a monitor_id_or_name.
@@ -1933,7 +1960,7 @@ class NtoApiClient(object):
         # TODO TEST we got HTTP/200 with JSON back
         # TODO TEST we got 'message' key back
         return self._callServer('POST', '/api/actions/get_neighbors', {'port_id_list': port_id_list})['message']
-    
+
     ###################################################
     # Port Groups
     ###################################################
@@ -1946,7 +1973,7 @@ class NtoApiClient(object):
         [{u'id': 202, u'name': u'PGF27'}, {u'id': 203, u'name': u'PGF31'}, {u'id': 204, u'name': u'PGF30'}, {u'id': 205, u'name': u'PGF29'}, {u'id': 206, u'name': u'PGF28'}, {u'id': 251, u'name': u'PGF1'}, {u'id': 252, u'name': u'PGF2'}, {u'id': 253, u'name': u'PGF3'}, {u'id': 254, u'name': u'PGF4'}, {u'id': 255, u'name': u'PGF5'}, {u'id': 288, u'name': u'PGF6'}, {u'id': 289, u'name': u'PGF7'}, {u'id': 290, u'name': u'PGF8'}, {u'id': 291, u'name': u'PGF9'}, {u'id': 292, u'name': u'PGF10'}, {u'id': 325, u'name': u'PGF11'}, {u'id': 326, u'name': u'PGF12'}, {u'id': 327, u'name': u'PGF13'}, {u'id': 328, u'name': u'PGF14'}, {u'id': 329, u'name': u'PGF15'}, {u'id': 362, u'name': u'PGF16'}, {u'id': 363, u'name': u'PGF17'}, {u'id': 364, u'name': u'PGF18'}, {u'id': 365, u'name': u'PGF19'}, {u'id': 366, u'name': u'PGF20'}, {u'id': 399, u'name': u'PGF21'}, {u'id': 400, u'name': u'PGF22'}, {u'id': 401, u'name': u'PGF23'}, {u'id': 402, u'name': u'PGF24'}, {u'id': 403, u'name': u'PGF25'}, {u'id': 404, u'name': u'PG1'}]
         """
         return self._callServer('GET', '/api/port_groups')
-    
+
     def getPortGroup(self, port_group):
         """ getPortGroup :
         Fetch the properties of a port group object which is specified by its
@@ -1957,7 +1984,7 @@ class NtoApiClient(object):
         {u'trim_settings': None, u'supports_timestamp': False, u'dedup_settings': None, u'vntag_strip_settings': None, u'vxlan_strip_settings': None, u'failover_mode': u'REBALANCE', u'keywords': [], u'supports_dedup': False, u'id': 404, u'fabric_path_strip_settings': None, u'supports_vntag_strip': False, u'has_dropped_packets': False, u'filtering_direction': u'INGRESS', u'supports_trailer_strip': False, u'icon_type': u'INTERCONNECT', u'last_filter_order_event': None, u'supports_mpls_strip': False, u'enabled_status': u'ENABLED', u'supports_burst_buffer': False, u'custom_icon_id': None, u'trailer_strip_settings': None, u'mpls_strip_settings': None, u'type': u'INTERCONNECT', u'tx_light_status': u'ON', u'filter_criteria': {u'logical_operation': u'AND'}, u'supports_std_vlan_strip': True, u'pause_frames_status': u'IGNORE', u'dest_filter_list': [], u'description': None, u'snmp_tag': None, u'l2gre_strip_settings': None, u'gtp_strip_settings': None, u'burst_buffer_settings': None, u'force_link_up': u'NOT_SUPPORTED', u'supports_trim': False, u'supports_gtp_strip': False, u'port_list': [58], u'supports_vxlan_strip': False, u'name': u'PG1', u'supports_l2gre_strip': False, u'supports_fabric_path_strip': False, u'link_status': {u'speed': 0, u'link_up': False}, u'interconnect_info': {u'addr': u'0.0.0.0', u'port_group': None}, u'created': {u'type': u'CREATE', u'caused_by': u'admin', u'details': None, u'time': 1442434236579}, u'default_name': u'PG1', u'supports_erspan_strip': False, u'mod_count': 1, u'timestamp_settings': None, u'erspan_strip_settings': None, u'mode': u'NETWORK', u'source_filter_list': [], u'filter_mode': u'PASS_ALL', u'std_vlan_strip_settings': {u'ingress_count': 0, u'egress_count': 0, u'enabled': False, u'strip_mode': None}, u'history': [{u'type': u'MODIFY', u'time': 1442434236579, u'caused_by': u'admin', u'details': None, u'props': [u'PORT_LIST']}]}
         """
         return self._callServer('GET', '/api/port_groups/' + port_group)
-    
+
     def createPortGroup(self, argsAPI):
         """ createPortGroup :
         Create a new port group.
@@ -1967,7 +1994,7 @@ class NtoApiClient(object):
         {u'id': u'405'}
         """
         return self._callServer('POST', '/api/port_groups', argsAPI)
-    
+
     def modifyPortGroup(self, port_group_id, argsAPI):
         """ modifyPortGroup :
         Update properties of a port group.
@@ -1977,7 +2004,7 @@ class NtoApiClient(object):
         ''
         """
         return self._callServer('PUT', '/api/port_groups/' + port_group_id, argsAPI, False)
-    
+
     def searchPortGroups(self, argsAPI):
         """ searchPortGroups :
         Search for a specific port group in the system by certain properties.
@@ -1987,7 +2014,7 @@ class NtoApiClient(object):
         [{u'id': 404, u'name': u'PG1'}]
         """
         return self._callServer('POST', '/api/port_groups/search', argsAPI)
-    
+
     def deletePortGroup(self, port_group_id):
         """ deletePortGroup :
         Remove a port group from the system. The port group is specified by a port_group_id_or_name.
@@ -2005,7 +2032,7 @@ class NtoApiClient(object):
         Sample usage:
         """
         return self._callServer('PUT', '/api/port_groups/' + port_group_id + '/disable', None, False)
-        
+
     def enablePortGroup(self, port_group_id):
         """ enablePortGroup :
         Enables a port group by enabling all the contained ports.
@@ -2037,7 +2064,7 @@ class NtoApiClient(object):
         [{u'id': 58, u'name': u'P1-01'}, {u'id': 59, u'name': u'P1-02'}, {u'id': 60, u'name': u'P1-03'}, {u'id': 61, u'name': u'P1-04'}, {u'id': 62, u'name': u'P1-05'}, {u'id': 63, u'name': u'P1-06'}, {u'id': 64, u'name': u'P1-07'}, {u'id': 65, u'name': u'P1-08'}, {u'id': 66, u'name': u'P1-09'}, {u'id': 67, u'name': u'P1-10'}, {u'id': 68, u'name': u'P1-11'}, {u'id': 69, u'name': u'P1-12'}, {u'id': 70, u'name': u'P1-13'}, {u'id': 71, u'name': u'P1-14'}, {u'id': 72, u'name': u'P1-15'}, {u'id': 73, u'name': u'P1-16'}]
         """
         return self._callServer('GET', '/api/ports')
-    
+
     def getPort(self, port):
         """ getPort :
         Fetch the properties of a port object which is specified by its
@@ -2048,7 +2075,7 @@ class NtoApiClient(object):
         {u'trim_settings': None, u'supports_timestamp': False, u'dedup_settings': None, u'filter_criteria': {u'logical_operation': u'AND'}, u'vntag_strip_settings': None, u'std_port_tagging_settings': {u'enabled': False, u'vlan_id': 101}, u'link_up_down_trap_enabled': True, u'filter_match_count_unit': u'PACKETS', u'gtp_fd_settings': None, u'keywords': [u'LC1'], u'tunnel_termination_settings': {u'ip_version': 4, u'dest_ip_addr': None, u'enabled': False, u'empty_erspan_header': False, u'tunnel_protocol': None}, u'supports_dedup': False, u'id': 58, u'fabric_path_strip_settings': None, u'supports_vxlan_strip': False, u'port_group_id': None, u'mpls_strip_settings': None, u'max_licensed_speed': u'40G', u'supports_vntag_strip': False, u'has_dropped_packets': False, u'filtering_direction': u'INGRESS', u'supports_trailer_strip': False, u'tunnel_mac': None, u'supports_tunnel_termination': False, u'supports_mpls_strip': False, u'copper_link_polling': False, u'last_filter_order_event': None, u'vxlan_strip_settings': None, u'supports_burst_buffer': False, u'custom_icon_id': None, u'trailer_strip_settings': None, u'media_type': u'QSFP_PLUS_40G', u'expiration_time': 1449727199651, u'modify_access_settings': {u'policy': u'ALLOW_ALL', u'groups': []}, u'type': u'QSFP_PLUS', u'link_settings': u'40G_FULL', u'tx_light_status': u'ON', u'connect_in_access_settings': {u'policy': u'ALLOW_ALL', u'groups': []}, u'supports_std_vlan_strip': True, u'dest_filter_list': [], u'description': None, u'snmp_tag': None, u'l2gre_strip_settings': None, u'gtp_strip_settings': None, u'burst_buffer_settings': None, u'force_link_up': u'NOT_SUPPORTED', u'supports_trim': False, u'supports_gtp_strip': False, u'license_status': u'VALID', u'resource_access_settings': {u'policy': u'ALLOW_ALL', u'groups': []}, u'supports_std_port_tagging': True, u'remote_fabric_port': None, u'connect_out_access_settings': {u'policy': u'ALLOW_ALL', u'groups': []}, u'name': u'P1-01', u'supports_l2gre_strip': False, u'supports_fabric_path_strip': False, u'ignore_pause_frames': True, u'link_status': {u'duplex': u'UNKNOWN', u'pause': u'UNKNOWN', u'speed': u'N/A', u'link_up': False}, u'icon_type': u'QSFP_PLUS', u'default_name': u'P1-01', u'enabled': False, u'supports_erspan_strip': False, u'mod_count': 21, u'timestamp_settings': None, u'erspan_strip_settings': None, u'mode': u'NETWORK', u'supports_gtp_flow_distribution': False, u'source_filter_list': [], u'filter_mode': u'PASS_ALL', u'std_vlan_strip_settings': {u'ingress_count': 0, u'egress_count': 0, u'enabled': False, u'strip_mode': None}, u'history': []}
         """
         return self._callServer('GET', '/api/ports/' + port)
-    
+
     def modifyPort(self, port_id, argsAPI):
         """ modifyPort :
         Update the properties of a port.
@@ -2058,7 +2085,7 @@ class NtoApiClient(object):
         ''
         """
         return self._callServer('PUT', '/api/ports/' + port_id, argsAPI, False)
-    
+
     def searchPorts(self, argsAPI):
         """ searchPorts :
         Search for a specific port in the system by certain properties.
@@ -2068,7 +2095,7 @@ class NtoApiClient(object):
         [{u'id': 58, u'name': u'P1-01'}]
         """
         return self._callServer('POST', '/api/ports/search', argsAPI)
-    
+
     def getPortProperties(self, port, properties):
         """ getPortProperties :
         Fetch one or more properties of a port object which is specified by its
@@ -2079,7 +2106,7 @@ class NtoApiClient(object):
         {u'enabled': True, u'link_status': {u'duplex': u'FULL', u'pause': u'DISABLED', u'speed': u'10G', u'link_up': True}}
         """
         return self._callServer('GET', '/api/ports/' + port + '?properties=' + properties)
-    
+
     def getPortProperty(self, port, property):
         """ getPortProperty :
         Fetch a property of a port object which is specified by its
@@ -2180,7 +2207,7 @@ class NtoApiClient(object):
         {u'stats_snapshot': [{u'np_peak_gtp_v2_deleted_sessions_time': 1441391232493, u'reset_by': u'null', u'reset_time': 1441390286194, u'default_name': u'PG1', u'stats_time': 1441391232493, u'np_total_rx_count_valid_packets': 0, u'type': u'Port Group', u'id': u'91'}]}
         """
         return self._callServer('POST', '/api/stats', argsAPI)
-    
+
     def resetStats(self, argsAPI):
         """ resetStats :
         Reset the stats for a set of specific NTO ports, port groups, and/or filters.
@@ -2190,7 +2217,7 @@ class NtoApiClient(object):
         {}
         """
         return self._callServer('POST', '/api/stats/reset', argsAPI)
-    
+
     def getManagementStats(self):
         """ getManagementStats :
         Returns the statistics for active management port.
@@ -2208,7 +2235,7 @@ class NtoApiClient(object):
         {u'reset_drops_attempt_count': 134, u'reset_drops_success_count': 118}
         """
         return self._callServer('POST', '/api/stats/reset_drops', argsAPI)
-    
+
     ####################################
     # System
     ####################################
@@ -2243,7 +2270,7 @@ class NtoApiClient(object):
         {u'dns_config': {u'suffix1': None, u'suffix2': None, u'primary_server': None, u'alt_server': None}, u'snmp_config': {u'trap_recipients': [{u'remote_user': None, u'traps': [u'COLD_START', u'WARM_START', u'LINK_UP_DOWN', u'TEST_NOTIFICATION'], u'retry_count': 1, u'host': {u'value': u'155.174.7.97'}, u'version': u'V2', u'community_string': u'V2/155.174.7.97:162', u'timeout': 5, u'port': 162}], u'refresh_time': 1, u'gets_enabled': True, u'traps_enabled': True, u'get_access': [{u'version': u'V2', u'community_string': u'AnueComm4ATSro', u'local_user': None}]}}
         """
         return self._callServer('GET', '/api/system?properties=' + properties)
-        
+
     def getSystemProperty(self, property):
         """ getSystemProperty :
         Fetch a systen property.
@@ -2253,7 +2280,7 @@ class NtoApiClient(object):
         {u'trap_recipients': [{u'remote_user': None, u'traps': [u'COLD_START', u'WARM_START', u'LINK_UP_DOWN', u'TEST_NOTIFICATION'], u'retry_count': 1, u'host': {u'value': u'155.174.7.97'}, u'version': u'V2', u'community_string': u'V2/155.174.7.97:162', u'timeout': 5, u'port': 162}], u'refresh_time': 1, u'gets_enabled': True, u'traps_enabled': True, u'get_access': [{u'version': u'V2', u'community_string': u'AnueComm4ATSro', u'local_user': None}]}
         """
         return self._callServer('GET', '/api/system?properties=' + property)[property]
-    
+
     def modifySystem(self, argsAPI):
         """ modifySystem :
         Update the system properties.
@@ -2273,7 +2300,7 @@ class NtoApiClient(object):
         ''
         """
         return self._callServer('PUT', '/api/system/' + system_id, argsAPI, False)
-        
+
     ####################################
     # Users
     ####################################

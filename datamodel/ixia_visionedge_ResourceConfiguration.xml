@@ -251,6 +251,6 @@
     </ResourceFamilies>
     <DriverDescriptors>
         <DriverDescriptor Name="IXIA VISIONEDGE" DriverType="L1SwitchTclDriver"
-                          CustomParams="ixia_visionedge.exe"/>
+                          CustomParams="ixia-visionedge.exe"/>
     </DriverDescriptors>
 </ResourceManagementExportImport>
