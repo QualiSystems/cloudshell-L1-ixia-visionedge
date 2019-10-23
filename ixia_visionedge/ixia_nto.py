@@ -64,7 +64,7 @@ class NtoApiClient(object):
             self._log("Headers=%s" % response.headers)
             self._log("Data=%s" % response.data)
 
-        self.token = response.headers['x-auth-token']
+        self.token = response.headers['X-auth-token']
         self.token_headers = {'Authentication': self.token, 'Content-type': 'application/json'}
 
     def __str__(self):
