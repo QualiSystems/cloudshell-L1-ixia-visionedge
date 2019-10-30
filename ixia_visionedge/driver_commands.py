@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 import re
 
+from backports.functools_lru_cache import lru_cache
+
 from cloudshell.layer_one.core.driver_commands_interface import DriverCommandsInterface
 from cloudshell.layer_one.core.response.resource_info.entities.chassis import Chassis
 from cloudshell.layer_one.core.response.resource_info.entities.blade import Blade
@@ -14,8 +16,7 @@ from ixia_visionedge.ixia_nto import NtoApiClient, NtoAuthException
 class NtoSession(object):
     MAX_RETRIES = 3
 
-    def __init__(self, ifc_cluster=None, address=None, username=None, password=None):
-        self._ifc_cluster = ifc_cluster
+    def __init__(self, address=None, username=None, password=None):
         self._address = address
         self._username = username
         self._password = password
@@ -31,6 +32,18 @@ class NtoSession(object):
         if self._address and self._username and self._password:
             return NtoApiClient(self._address, self._username, self._password)
         raise Exception("Login details are not defined")
+
+    @property
+    @lru_cache()
+    def ifc_cluster(self):
+        try:
+            cluster_prop = self.getCteCluster()
+        except:
+            cluster_prop = None
+
+        if cluster_prop:
+            return True
+        return False
 
     def _auth_call(self, name):
         """
@@ -63,43 +76,43 @@ class NtoSession(object):
         return str(identifier)
 
     def get_ports(self):
-        if self._ifc_cluster:
+        if self.ifc_cluster:
             return self.getAllCtePorts()
         return self.getAllPorts()
 
     def get_port_data(self, port_ident):
         port_ident = self._normalize_identifier(port_ident)
-        if self._ifc_cluster:
+        if self.ifc_cluster:
             return self.getCtePort(port_ident)
         return self.getPort(port_ident)
 
     def modify_port(self, port_ident, request_data):
         port_ident = self._normalize_identifier(port_ident)
-        if self._ifc_cluster:
+        if self.ifc_cluster:
             self.modifyCtePort(port_ident, request_data)
         else:
             self.modifyPort(port_ident, request_data)
 
     def get_filters(self):
-        if self._ifc_cluster:
+        if self.ifc_cluster:
             return self.getAllCteFilters()
         return self.getAllFilters()
 
     def get_filter(self, ident):
         ident = self._normalize_identifier(ident)
-        if self._ifc_cluster:
+        if self.ifc_cluster:
             return self.getCteFilter(ident)
         return self.getFilter(ident)
 
     def create_filter(self, request_data):
-        if self._ifc_cluster:
+        if self.ifc_cluster:
             self.createCteFilter(request_data)
         else:
             self.createFilter(request_data)
 
     def delete_filter(self, ident):
         ident = self._normalize_identifier(ident)
-        if self._ifc_cluster:
+        if self.ifc_cluster:
             self.deleteCteFilter(ident)
         else:
             self.deleteFilter(ident)
@@ -142,12 +155,22 @@ class DriverCommands(DriverCommandsInterface):
         """
         self._logger = logger
         self._runtime_config = runtime_config
-        self._ifc_cluster = runtime_config.read_key('IFC_CLUSTER', False)
+        # self._ifc_cluster = runtime_config.read_key('IFC_CLUSTER', None)
 
-        self._KEYS = self._CLUSTER_KEYS if self._ifc_cluster else self._DEFAULT_KEYS
+        # self._KEYS = self._CLUSTER_KEYS if self._ifc_cluster else self._DEFAULT_KEYS
         self._VALUES = self._API_VALUES
 
-        self._nto_session = NtoSession(self._ifc_cluster)
+        self._nto_session = NtoSession()
+
+    @property
+    @lru_cache()
+    def _ifc_cluster(self):
+        return self._nto_session.ifc_cluster
+
+    @property
+    @lru_cache()
+    def _KEYS(self):
+        return self._CLUSTER_KEYS if self._ifc_cluster else self._DEFAULT_KEYS
 
     def login(self, address, username, password):
         """

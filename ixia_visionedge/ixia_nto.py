@@ -1015,13 +1015,29 @@ class NtoApiClient(object):
 
     # CTE Cluster
 
-    def getCteCluster(self, argsAPI):
+    def getCteCluster(self):
         """ getCteCluster :
         Retrieve the properties of the CTE cluster.
 
         Sample usage:
         """
-        return self._callServer('POST', '/api/cte_cluster', argsAPI)
+        return self._callServer('GET', '/api/cte_cluster')
+
+    def getCteResources(self):
+        """ getCteCluster :
+        Retrieve the properties of the CTE cluster.
+
+        Sample usage:
+        """
+        return self._callServer('GET', '/api/cte_ae_resources')
+
+    # def getCteCluster(self, argsAPI):
+    #     """ getCteCluster :
+    #     Retrieve the properties of the CTE cluster.
+    #
+    #     Sample usage:
+    #     """
+    #     return self._callServer('POST', '/api/cte_cluster', argsAPI)
 
     # CTE Connections
 
