@@ -45,8 +45,6 @@ Release: **Ixia Visionedge L1 Shell**
 
 ▪ CloudShell version: 8.0 and above
 
-▪ Other: [version x.x]
-
 ### Data Model
 
 The shell's data model includes all shell metadata, families, and attributes.
