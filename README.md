@@ -3,9 +3,9 @@
 
 # **Ixia Visionedge L1 Shell**
 
-Release date: 09/09/2019 
+Release date: 25/11/2019
 
-Shell version: 1.0.0
+Shell version: 1.0.x
 
 Document version: 1.0
 
@@ -38,9 +38,6 @@ For more information on the **Ixia Visionedge**, see the official **[Device Manu
 
 ### Standard version
 The Ixia Visionedge L1 shell is based on the [**Layer 1 Switch Shell Standard**](https://github.com/QualiSystems/shell-L1-template).
-
-### Supported OS
-▪ [OS Name]
 
 ### Requirements
 
@@ -105,8 +102,6 @@ This section describes the automation (drivers) associated with the data model. 
 |MapUni|Creates a uni-directional mapping between two ports.|
 |MapClear|Clears any connection ending in this port.|
 |MapClearTo|Clears a uni-directional connection between two ports.|
-|GetAttributeValue|Extracts attribute values from the device.|
-|SetAttributeValue|Sets attribute values on the device.|
 |MapTap|Adds monitor ports to an existing connection.|
 
 **Note:** You can only activate a TAP connection after activating a parent MapUni/MapBidi connection. 
