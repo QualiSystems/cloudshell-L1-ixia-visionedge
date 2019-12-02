@@ -34,10 +34,13 @@ The Ixia Visionedge L1 shell provides you with the capability to communicate wit
 
 The shell allows CloudShell users to interact with the device, for example, create and modify route mappings, get device information, and more.
 
-For more information on the **Ixia Visionedge**, see the official **[Device Manufacturer]** product documentation.
+For more information on the **Ixia Visionedge**, see the official [**Vision Edge OS**](https://www.ixiacom.com/edgeos) product documentation.
 
 ### Standard version
 The Ixia Visionedge L1 shell is based on the [**Layer 1 Switch Shell Standard**](https://github.com/QualiSystems/shell-L1-template).
+
+### Supported OS
+▪ Vision Edge OS
 
 ### Requirements
 
@@ -111,7 +114,7 @@ The shell comprises:
 
 |File name|Description|
 |:---|:---|
-|cloudshell-L1-ixia_visionedge-x.x.x.zip|Ixia Visionedge L1 shell package|
+|cloudshell-L1-ixia-visionedge-x.x.x.zip|Ixia Visionedge L1 shell package|
 |install_driver.bat|Ixia Visionedge L1 shell installation script|
 |ixia_visionedge_runtime_config.yml|Ixia Visionedge L1 shell configuration file|
 |ixia_visionedge_ResourceConfiguration.xml|XML file containing the resource structure, attributes and capabilities of the L1 switches of the same vendor|
@@ -127,11 +130,11 @@ This section describes how to import the L1 shell and configure and modify the s
   2. Extract the *Ixia Visionedge L1 shell zip* package to the following location on the Quali Server machine: 
   *C:\Program Files (x86)\QualiSystems\CloudShell\Server\Drivers*
   
-  3. Run the *C:\Program Files (x86)\QualiSystems\CloudShell\Server\Drivers\cloudshell-L1-ixia_visionedge\install_driver.bat* file.
+  3. Run the *C:\Program Files (x86)\QualiSystems\CloudShell\Server\Drivers\cloudshell-L1-ixia-visionedge\install_driver.bat* file.
   
   4. Import the new data model.
       1. In **Resource Manager Client>Admin**, right-click **Resource Families** and select **Import**.
-      2. Select the *C:\Program Files (x86)\QualiSystems\CloudShell\Server\Drivers\cloudshell-L1-ixia_visionedge\datamodel\ixia_visionedge_ResourceConfiguration.xml* file.
+      2. Select the *C:\Program Files (x86)\QualiSystems\CloudShell\Server\Drivers\cloudshell-L1-ixia-visionedge\datamodel\ixia_visionedge_ResourceConfiguration.xml* file.
       3. Click **Open**.
 	
   5. Create an L1 resource.
@@ -156,7 +159,7 @@ This section describes how to import the L1 shell and configure and modify the s
 ### Offline installation of a shell
 Shell installation installs the required dependencies from the shell's zip package.
 
-The *install_driver.bat* script creates a virtual environment on the Quali Server machine under *C:\Program Files (x86)\QualiSystems\CloudShell\Server\Drivers\cloudshell-L1-ixia_visionedge* and installs the required dependencies in this virtual environment from the extracted L1 shell folder (under *~cloudshell-L1-ixia_visionedge\packages*).
+The *install_driver.bat* script creates a virtual environment on the Quali Server machine under *C:\Program Files (x86)\QualiSystems\CloudShell\Server\Drivers\cloudshell-L1-ixia-visionedge* and installs the required dependencies in this virtual environment from the extracted L1 shell folder (under *~cloudshell-L1-ixia-visionedge\packages*).
 
 # Updating Python Dependencies for Shells
 This section explains how to update your Python dependencies folder. This is required when you upgrade a shell that uses new/updated dependencies. It applies to both online and offline dependencies. 
@@ -178,7 +181,7 @@ L1 shells do not have separate Python dependencies files. All dependencies are i
 
 5. Copy the upgraded shell's datamodel file from:
 
-	*C:\Program Files (x86)\QualiSystems\CloudShell\Server\Drivers\cloudshell-L1-ixia_visionedge\datamodel\ixia_visionedge_ResourceConfiguration.xml*
+	*C:\Program Files (x86)\QualiSystems\CloudShell\Server\Drivers\cloudshell-L1-ixia-visionedge\datamodel\ixia_visionedge_ResourceConfiguration.xml*
 	
 	to:
 	
@@ -204,4 +207,4 @@ To connect with Quali users and experts from around the world, ask questions and
 
 ### What's New
 
-For release updates, see the shell's [GitHub releases page](https://github.com/QualiSystems/cloudshell-L1-ixia_visionedge/releases).
+For release updates, see the shell's [GitHub releases page](https://github.com/QualiSystems/cloudshell-L1-ixia-visionedge/releases).
