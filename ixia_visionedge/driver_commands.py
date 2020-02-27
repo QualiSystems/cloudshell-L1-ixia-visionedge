@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 import re
 
-from backports.functools_lru_cache import lru_cache
+from functools32 import lru_cache
 
 from cloudshell.layer_one.core.driver_commands_interface import DriverCommandsInterface
 from cloudshell.layer_one.core.response.resource_info.entities.chassis import Chassis
@@ -484,7 +484,8 @@ class DriverCommands(DriverCommandsInterface):
             if match:
                 port_id = match.group(1)
 
-        return blade_id.lstrip("0"), port_id.lstrip("0")
+        if blade_id and port_id:
+            return blade_id.lstrip("0"), port_id.lstrip("0")
 
     def _build_port_name(self, blade_id, port_id):
         if self._ifc_cluster:
