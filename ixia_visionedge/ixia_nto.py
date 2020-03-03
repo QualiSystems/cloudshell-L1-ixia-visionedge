@@ -36,7 +36,7 @@ class NtoAuthException(NtoException):
 
 class NtoApiClient(object):
 
-    def __init__(self, host, username, password, port=8000, debug=False, logFile=None):
+    def __init__(self, host, username, password, port=8000, debug=False, logFile=None, logger=None):
         # urllib3.disable_warnings()
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         self.host = host
@@ -49,6 +49,7 @@ class NtoApiClient(object):
         self.token_headers = ''
         self.connection = ''
         self.logFile = logFile
+        self.logger = logger
 
         self.auth_b64 = base64.b64encode(bytearray(username + ":" + password, 'ascii')).decode('ascii')
         self.password_headers = {'Authorization': 'Basic ' + self.auth_b64, 'Content-type': 'application/json'}
@@ -80,10 +81,14 @@ class NtoApiClient(object):
                    self.token_headers, self.connection)
 
     def _log(self, message):
-        handle = open(self.logFile, 'a') if self.logFile else sys.stdout
-        handle.write(message)
-        if handle is not sys.stdout:
-            handle.close()
+        if self.logger:
+            self.logger.debug(message)
+
+        if self.logFile:
+            handle = open(self.logFile, 'a') if self.logFile else sys.stdout
+            handle.write(message)
+            if handle is not sys.stdout:
+                handle.close()
 
     def _callServer(self, HTTPMethod, URL, argsAPI=None, decode=True):
         """ Call server method HTTPMethod with error handling

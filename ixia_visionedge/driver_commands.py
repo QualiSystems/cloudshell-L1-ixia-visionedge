@@ -16,10 +16,11 @@ from ixia_visionedge.ixia_nto import NtoApiClient, NtoAuthException
 class NtoSession(object):
     MAX_RETRIES = 3
 
-    def __init__(self, address=None, username=None, password=None):
+    def __init__(self, address=None, username=None, password=None, logger=None):
         self._address = address
         self._username = username
         self._password = password
+        self._logger = logger
 
         self._session = None
 
@@ -30,7 +31,7 @@ class NtoSession(object):
 
     def _init_session(self):
         if self._address and self._username and self._password:
-            return NtoApiClient(self._address, self._username, self._password)
+            return NtoApiClient(self._address, self._username, self._password, debug=True, logger=self._logger)
         raise Exception("Login details are not defined")
 
     @property
@@ -160,7 +161,7 @@ class DriverCommands(DriverCommandsInterface):
         # self._KEYS = self._CLUSTER_KEYS if self._ifc_cluster else self._DEFAULT_KEYS
         self._VALUES = self._API_VALUES
 
-        self._nto_session = NtoSession()
+        self._nto_session = NtoSession(logger=self._logger)
 
     @property
     @lru_cache()
