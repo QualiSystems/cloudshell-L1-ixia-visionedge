@@ -487,6 +487,8 @@ class DriverCommands(DriverCommandsInterface):
 
         if blade_id and port_id:
             return blade_id.lstrip("0"), port_id.lstrip("0")
+        else:
+            return None, None
 
     def _build_port_name(self, blade_id, port_id):
         if self._ifc_cluster:
