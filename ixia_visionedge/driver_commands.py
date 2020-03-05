@@ -321,14 +321,17 @@ class DriverCommands(DriverCommandsInterface):
             port_uuid = port_info.get(self._KEYS.IDENTIFIER)
             port_name = port_info.get(self._KEYS.NAME)
             blade_id, port_id = self._parse_port_name(port_name)
-            if blade_id and port_id:
-                blade = blade_table.get(blade_id)
-                if not blade:
-                    blade = Blade(blade_id)
-                    blade.set_parent_resource(chassis)
-                    blade_table[blade_id] = blade
-            else:
+            if not blade_id and not port_id:
+                blade_id, port_id = self._parse_port_name(self._get_port_data(port_name).get('default_name'))
+
+            if not blade_id or not port_id:
                 continue
+
+            blade = blade_table.get(blade_id)
+            if not blade:
+                blade = Blade(blade_id)
+                blade.set_parent_resource(chassis)
+                blade_table[blade_id] = blade
             port = Port(port_id)
             port.set_parent_resource(blade)
             port_table[port_uuid] = port
