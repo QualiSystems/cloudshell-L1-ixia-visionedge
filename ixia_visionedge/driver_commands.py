@@ -321,10 +321,13 @@ class DriverCommands(DriverCommandsInterface):
             port_uuid = port_info.get(self._KEYS.IDENTIFIER)
             port_name = port_info.get(self._KEYS.NAME)
             blade_id, port_id = self._parse_port_name(port_name)
-            if not blade_id and not port_id:
+            if not blade_id or not port_id:
+                self._logger.debug(
+                    "Extracting default port name for uuid: {}, name: {}".format(port_uuid, port_name))
                 blade_id, port_id = self._parse_port_name(self._get_port_data(port_name).get('default_name'))
 
             if not blade_id or not port_id:
+                self._logger.error("Cannot identify port id, uuid: {}, name: {}".format(port_uuid, port_name))
                 continue
 
             blade = blade_table.get(blade_id)
