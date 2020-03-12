@@ -10,6 +10,7 @@ from cloudshell.layer_one.core.response.resource_info.entities.blade import Blad
 from cloudshell.layer_one.core.response.resource_info.entities.port import Port
 from cloudshell.layer_one.core.response.response_info import ResourceDescriptionResponseInfo
 from cloudshell.layer_one.core.response.response_info import GetStateIdResponseInfo
+# from ixia_visionedge.data_mock.br_ports_data import get_ports
 from ixia_visionedge.ixia_nto import NtoApiClient, NtoAuthException
 
 
@@ -315,6 +316,7 @@ class DriverCommands(DriverCommandsInterface):
 
         port_table = {}
         port_list = self._get_ports()
+        # port_list = get_ports()
         if not port_list:
             raise Exception("Ports are not defined.")
         for port_info in port_list:
@@ -482,14 +484,14 @@ class DriverCommands(DriverCommandsInterface):
         blade_id = self._VALUES.BLADE_ID
         port_id = None
         if self._ifc_cluster:
-            match = re.match(r'S(\d+)-P(\d+)', port_name, re.IGNORECASE)
+            match = re.match(r'S(\d+)-P(\d+-\d+)|S(\d+)-P(\d+)', port_name, re.IGNORECASE)
             if match:
-                blade_id = match.group(1)
-                port_id = match.group(2)
+                blade_id = match.group(1) or match.group(3)
+                port_id = match.group(2) or match.group(4)
         else:
-            match = re.match(r'P(\d+)', port_name, re.IGNORECASE)
+            match = re.match(r'P(\d+-\d+)|P(\d+)', port_name, re.IGNORECASE)
             if match:
-                port_id = match.group(1)
+                port_id = match.group(1) or match.group(2)
 
         if blade_id and port_id:
             return blade_id.lstrip("0"), port_id.lstrip("0")
@@ -497,9 +499,15 @@ class DriverCommands(DriverCommandsInterface):
             return None, None
 
     def _build_port_name(self, blade_id, port_id):
+        port_list = str(port_id).split("-")
+        if len(port_list) > 1:
+            port_id = "{}-{}".format(port_list[0].zfill(2), port_list[1])
+        else:
+            port_id = str(port_id).zfill(2)
+
         if self._ifc_cluster:
-            return "S{}-P{}".format(blade_id, str(port_id).zfill(2))
-        return "P{}".format(str(port_id).zfill(2))
+            return "S{}-P{}".format(blade_id, port_id)
+        return "P{}".format(port_id)
 
     def _from_cs_port(self, cs_port):
         return self._build_port_name(*cs_port.split("/")[1:])
